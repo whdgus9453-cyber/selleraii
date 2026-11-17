@@ -1,0 +1,183 @@
+{
+  "title": "새 제품 기획",
+  "status": "💬 기획중",
+  "keyword": "",
+  "cost_price": "",
+  "brief_desc": "",
+  "manual_size": "",
+  "target_platform": "1. 가로 860px (대표썸네일 1000×1000px) — 적합 플랫폼: 네이버 스마트스토어 · G마켓 · 옥션 · 11번가",
+  "ref_urls": [],
+  "ref_items": [],
+  "price_stats": {},
+  "chat_history": [],
+  "page_feedback_history": [],
+  "orig_img_b64": "",
+  "edited_img_b64": "",
+  "fg_cutout_b64": "",
+  "multi_images": [],
+  "cutout_v": "v7.0_clean_isolated",
+  "marketer_v": "v6.0_clean_copy",
+  "photo_ai_report": {
+    "engine_used": "아직 보정 전입니다.",
+    "process_steps": [],
+    "api_diagnosis": ""
+  },
+  "spec_qa": {},
+  "product_specs": [
+    {
+      "label": "품명 및 모델명",
+      "value": "",
+      "항목": "품명 및 모델명",
+      "내용": ""
+    },
+    {
+      "label": "실측 사이즈 / 중량",
+      "value": "",
+      "항목": "실측 사이즈 / 중량",
+      "내용": ""
+    },
+    {
+      "label": "재질",
+      "value": "",
+      "항목": "재질",
+      "내용": ""
+    },
+    {
+      "label": "핵심 기능",
+      "value": "",
+      "항목": "핵심 기능",
+      "내용": ""
+    },
+    {
+      "label": "주요 사용처",
+      "value": "",
+      "항목": "주요 사용처",
+      "내용": ""
+    }
+  ],
+  "shipping_info": {
+    "courier": "CJ대한통운 / 한진택배 (안심 안전포장 발송)",
+    "cutoff": "평일 오후 2시(14:00) 이전 결제 완료 시 당일 출고 (주말·공휴일 제외)",
+    "cutoff_time": "평일 오후 2시(14:00) 이전 결제 완료 시 당일 출고 (주말·공휴일 제외)",
+    "eta": "출고 후 영업일 기준 평균 1~2일 이내 수령 (도서·산간 지역 2~3일 소요)",
+    "delivery_days": "출고 후 영업일 기준 평균 1~2일 이내 수령 (도서·산간 지역 2~3일 소요)",
+    "fee": "기본 배송비 3,000원 (제주·도서산간 추가 배송비 별도 / 묶음 구매 시 배송비 절약)",
+    "shipping_fee": "기본 배송비 3,000원 (제주·도서산간 추가 배송비 별도 / 묶음 구매 시 배송비 절약)",
+    "exchange": "전자상거래법 준수: 수령 후 7일 이내 교환/반품 가능 (단순 변심 시 왕복 배송비 구매자 부담 / 제품 불량·오배송 시 100% 판매자 부담)",
+    "exchange_info": "전자상거래법 준수: 수령 후 7일 이내 교환/반품 가능 (단순 변심 시 왕복 배송비 구매자 부담 / 제품 불량·오배송 시 100% 판매자 부담)",
+    "caution_note": ""
+  },
+  "typo_settings": {
+    "title_size": 34,
+    "body_size": 16,
+    "title_weight": "900",
+    "body_weight": "500",
+    "title_italic": false,
+    "body_italic": false,
+    "title_color": "#0F172A",
+    "body_color": "#0F172A",
+    "page_bg": "#FFFFFF"
+  },
+  "theme_color": "1. 스타벅스 딥그린 & 민트 크림 (#00704A)",
+  "slot1_media": {
+    "type": "",
+    "data": "",
+    "caption": ""
+  },
+  "slot2_media": {
+    "type": "",
+    "data": "",
+    "caption": ""
+  },
+  "slot3_media": {
+    "type": "",
+    "data": "",
+    "caption": ""
+  },
+  "title_font": "2. 지마켓 산스 (Gmarket Sans - 쿠팡/특가 헤드라인 대표 굵은 고딕)",
+  "body_font": "1. 프리텐다드 (Pretendard - 토스/애플 스타일 깔끔한 표준 고딕)",
+  "nine_steps": [
+    {
+      "step": 1,
+      "role": "첫인상 · 메인 헤드카피 (공감 & 핵심 가치)",
+      "subtitle": "",
+      "main_title": "",
+      "body": ""
+    },
+    {
+      "step": 2,
+      "role": "차별화 · 핵심 비교 포인트 (왜 이 제품인가)",
+      "subtitle": "",
+      "main_title": "",
+      "body": ""
+    },
+    {
+      "step": 3,
+      "role": "상품 특징 · 3대 핵심 설계",
+      "subtitle": "",
+      "main_title": "",
+      "body": ""
+    },
+    {
+      "step": 4,
+      "role": "제조 · 소재 · 내구성 검증",
+      "subtitle": "",
+      "main_title": "",
+      "body": ""
+    },
+    {
+      "step": 5,
+      "role": "실물 규격 · 100원 동전 비교 실측 · 상세 스펙",
+      "subtitle": "",
+      "main_title": "",
+      "body": ""
+    },
+    {
+      "step": 6,
+      "role": "상황별 활용 · 호환 가이드",
+      "subtitle": "",
+      "main_title": "",
+      "body": ""
+    },
+    {
+      "step": 7,
+      "role": "출고 · 배송 · 포장 안내",
+      "subtitle": "",
+      "main_title": "",
+      "body": ""
+    },
+    {
+      "step": 8,
+      "role": "올바른 사용법 · 보관 및 관리 팁",
+      "subtitle": "",
+      "main_title": "",
+      "body": ""
+    },
+    {
+      "step": 9,
+      "role": "자주 묻는 질문(FAQ) & 전자상거래법 기준 교환·환불 보장",
+      "subtitle": "",
+      "main_title": "",
+      "body": ""
+    }
+  ],
+  "six_agents_research": {},
+  "page_blocks": {
+    "hook_badge": "",
+    "hook_title": "",
+    "hook_sub": "",
+    "keywords": [],
+    "point1_title": "",
+    "point1_desc": "",
+    "point2_title": "",
+    "point2_desc": "",
+    "point3_title": "",
+    "point3_desc": "",
+    "price_origin": "",
+    "price_sale": "",
+    "price_reason": "",
+    "photo_requests": []
+  },
+  "draft_html": "",
+  "updated_at": "2026-10-22 13:50:33"
+}
