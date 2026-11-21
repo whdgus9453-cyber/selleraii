@@ -1,0 +1,31 @@
+{
+  "gemini_key": "",
+  "naver_id": "",
+  "naver_secret": "",
+  "clipdrop_key": "",
+  "fal_key": "",
+  "bria_key": "",
+  "drap_art_key": "",
+  "flair_ai_key": "",
+  "hookle_key": "",
+  "photoroom_key": "",
+  "removebg_key": "",
+  "hub_path": "C:\\Users\\이종석\\.gemini\\antigravity\\scratch\\selleraii\\스튜디오\\seller_hub_data",
+  "key_status": {},
+  "brand_preset": {
+    "store_name": "",
+    "slogan": "",
+    "shipping_fee": "",
+    "exchange_notice": "",
+    "target_margin_pct": 35,
+    "title_font": "",
+    "body_font": ""
+  },
+  "image_defaults": {
+    "detail_width": 860,
+    "save_format": "PNG",
+    "jpeg_quality": 92,
+    "keep_png_alpha": true,
+    "shadow_strength": 18
+  }
+}

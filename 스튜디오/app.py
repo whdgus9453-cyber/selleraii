@@ -2,9 +2,12 @@ import copy
 import io
 import json
 import socket
+import base64
 from datetime import datetime
 from PIL import Image
+import qrcode
 import streamlit as st
+from tunnel_manager import get_current_tunnel_url, start_tunnel_background
 
 # =====================================================================
 # [4대 코어 모듈 분리 임포트]
@@ -44,6 +47,7 @@ from core_media import (
     file_to_media_data_url,
     render_free_cutout_shortcuts,
     is_already_cutout_png,
+    quick_auto_cutout_pil,
     create_procedural_studio_background,
     apply_color_harmonization,
     composite_photocraft_layers,
@@ -76,11 +80,32 @@ config = init_storage()
 
 
 def inject_photoshop_shortcuts():
-    """포토샵/일러스트레이터 키보드 단축키를 Streamlit 최상위 창에 바인딩합니다."""
+    """포토샵/일러스트레이터 키보드 단축키를 Streamlit 창에 안전하게 바인딩하고 removeChild 에러를 방지합니다."""
+    if st.session_state.get("__shortcuts_injected"):
+        return
+    st.session_state["__shortcuts_injected"] = True
+
     shortcut_js = """
     <script>
     (function() {
-      const doc = window.parent.document;
+      // 1. Streamlit React의 removeChild 에러 팝업 원천 차단
+      const suppressRemoveChild = function(e) {
+        if (e && e.message && e.message.includes('removeChild')) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          return true;
+        }
+      };
+      window.addEventListener('error', suppressRemoveChild, true);
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.addEventListener('error', suppressRemoveChild, true);
+        }
+      } catch(err) {}
+
+      // 2. 단축키 바인딩
+      let doc = null;
+      try { doc = window.parent.document; } catch(e) { doc = document; }
       if (!doc || doc.__photocraft_shortcuts_bound) return;
       doc.__photocraft_shortcuts_bound = true;
 
@@ -88,49 +113,36 @@ def inject_photoshop_shortcuts():
         const activeEl = doc.activeElement;
         const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
 
-        // 1. Ctrl + S (또는 Cmd + S) -> 저장
+        // Ctrl + S -> 저장
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
           e.preventDefault();
           const buttons = Array.from(doc.querySelectorAll('button'));
           const saveBtn = buttons.find(b => b.innerText && (b.innerText.includes('스튜디오 완성본 저장') || b.innerText.includes('프로젝트 저장') || b.innerText.includes('저장')));
           if (saveBtn) {
             saveBtn.click();
-            showToast('💾 단축키 (Ctrl+S): 프로젝트 및 스튜디오 저장 실행!');
           }
           return;
         }
 
         if (isInput) return;
 
-        // 2. 1, 2, 3, 4 -> 단계 이동
+        // 1, 2, 3, 4 -> 단계 이동
         if (['1', '2', '3', '4'].includes(e.key)) {
           const stepIdx = e.key;
           const stepBtns = Array.from(doc.querySelectorAll('button')).filter(b => b.innerText && b.innerText.includes(stepIdx + '.'));
           if (stepBtns.length > 0) {
             e.preventDefault();
             stepBtns[0].click();
-            showToast('🚀 단축키 (' + stepIdx + '): ' + stepIdx + '단계로 이동');
           }
         }
       });
-
-      function showToast(msg) {
-        let t = doc.getElementById('adobe-toast');
-        if (!t) {
-          t = doc.createElement('div');
-          t.id = 'adobe-toast';
-          t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#0f172a;color:#38bdf8;border:1px solid #38bdf8;padding:10px 18px;border-radius:8px;font-weight:700;font-size:13px;z-index:999999;box-shadow:0 8px 24px rgba(0,0,0,0.6);transition:opacity 0.25s;';
-          doc.body.appendChild(t);
-        }
-        t.innerText = msg;
-        t.style.opacity = '1';
-        t.style.display = 'block';
-        setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 2200);
-      }
     })();
     </script>
     """
-    components.html(shortcut_js, height=0, width=0)
+    try:
+        components.html(shortcut_js, height=0, width=0)
+    except Exception:
+        pass
 
 inject_photoshop_shortcuts()
 
@@ -155,6 +167,26 @@ def _get_access_urls():
     except Exception:
         pass
     return lan_ip, tailscale_ip
+
+
+def _make_qr_b64(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=4,
+            border=2,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="#0f172a", back_color="#ffffff")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+    except Exception:
+        return ""
 
 
 def _render_page(data):
@@ -313,12 +345,30 @@ with st.sidebar:
 
     st.markdown("---")
     _lan_ip, _ts_ip = _get_access_urls()
-    _ts_line = f"<br>• 외부(Tailscale): <code>http://{_ts_ip}:8501</code>" if _ts_ip else ""
+    _tunnel_url = get_current_tunnel_url()
+    if not _tunnel_url:
+        _tunnel_url = start_tunnel_background(8501)
+
+    _target_mobile_url = _tunnel_url or f"http://{_lan_ip}:8501"
+    _qr_img = _make_qr_b64(_target_mobile_url)
+
     st.markdown(f"""
-    <div class="dark-safe-card" style="padding:10px; font-size:0.84em; margin-bottom:8px;">
-        📱 <b>접속 주소</b><br>
-        • 스마트폰(Wi-Fi): <a href="http://{_lan_ip}:8501" target="_blank"><code>http://{_lan_ip}:8501</code></a>{_ts_line}<br>
-        • PC: <a href="http://localhost:8501" target="_blank"><code>http://localhost:8501</code></a>
+    <div class="dark-safe-card" style="padding:12px; font-size:0.84em; margin-bottom:8px; border:1px solid #3b82f6; border-radius:10px; background:#0f172a;">
+        <div style="font-weight:700; color:#38bdf8; margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;">
+            <span>📱 갤럭시 모바일 즉시 연결</span>
+            <span style="font-size:0.75em; background:#1e293b; color:#10b981; padding:2px 6px; border-radius:4px; border:1px solid #10b981;">LTE/5G 지원</span>
+        </div>
+        <div style="text-align:center; padding:8px 0;">
+            {"<img src='" + _qr_img + "' style='width:145px; height:145px; border-radius:8px; border:2px solid #ffffff; background:white; padding:4px;' alt='Mobile QR'>" if _qr_img else ""}
+            <div style="font-size:0.76em; color:#94a3b8; margin-top:5px;">
+                📸 갤럭시 기본 카메라로 스캔하세요!
+            </div>
+        </div>
+        <div style="font-size:0.80em; color:#cbd5e1; border-top:1px solid #334155; padding-top:6px; margin-top:4px;">
+            • <b>모바일 링크</b>: <a href="{_target_mobile_url}" target="_blank" style="color:#60a5fa; word-break:break-all;">{_target_mobile_url}</a><br>
+            • <b>로컬 Wi-Fi</b>: <a href="http://{_lan_ip}:8501" target="_blank" style="color:#94a3b8;">http://{_lan_ip}:8501</a><br>
+            • <b>PC 브라우저</b>: <a href="http://localhost:8501" target="_blank" style="color:#94a3b8;">http://localhost:8501</a>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -599,6 +649,30 @@ if st.session_state.active_step == 1:
         cost = st.text_input("매입 원가 / 희망 판매가", value=pdata.get("cost_price", ""), key=f"cost_{pid}", placeholder="예: 원가 200원 / 희망가 3,900원")
         m_size = st.text_input("실측 규격 (직접 입력 또는 100원 동전 실측)", value=pdata.get("manual_size", ""), key=f"size_{pid}", placeholder="예: 총 길이 105mm (100원 동전 실측)")
 
+        # 키워드/제품명 변경 시 전략 분석 & 9단계 기획 & 상세페이지 즉각 실시간 동기화
+        cur_kw = (pdata.get("keyword") or "").strip()
+        new_kw = kw.strip()
+        kw_updated = False
+        if new_kw and new_kw != cur_kw:
+            pdata["keyword"] = new_kw
+            pdata["title"] = new_kw
+            pdata["nine_steps"] = get_default_9steps(msize=m_size.strip(), kw=new_kw)
+            rep_chk = generate_marketer_strategy_report([], [], pdata)
+            pdata.setdefault("page_blocks", {}).update(rep_chk.get("recommended_blocks", {}))
+            kw_updated = True
+
+        if cost.strip() != (pdata.get("cost_price") or "").strip():
+            pdata["cost_price"] = cost.strip()
+            kw_updated = True
+
+        if m_size.strip() != (pdata.get("manual_size") or "").strip():
+            pdata["manual_size"] = m_size.strip()
+            kw_updated = True
+
+        if kw_updated:
+            pdata["draft_html"] = _render_page(pdata)
+            save_project(pid, pdata)
+
         sel_plat = st.selectbox(
             "타겟 플랫폼 규격",
             plat_list,
@@ -645,36 +719,71 @@ if st.session_state.active_step == 1:
         )
         if multi_up:
             default_caps = ["전면 디테일", "측면 마감", "장착부 클로즈업", "실물 텍스처", "컴팩트 사이즈", "디테일 뷰"]
-            for uf in multi_up:
-                _, durl = file_to_media_data_url(uf, auto_polish=True)
-                if durl and not any(m.get("name") == uf.name for m in pdata.get("multi_images", [])):
-                    c_idx = len(pdata.get("multi_images", [])) % len(default_caps)
-                    up_pil = base64_url_to_pil(durl)
-                    is_cutout = is_already_cutout_png(up_pil)
-                    if is_cutout:
-                        pdata["fg_cutout_b64"] = durl
-                        th_spec = get_platform_spec(pdata.get("target_platform"))
-                        th_w, th_h = th_spec["thumb_size"]
-                        canvas = Image.new("RGB", (th_w, th_h), (255, 255, 255))
-                        fg_rgba = up_pil.convert("RGBA")
-                        scale = min(int(th_w * 0.78) / max(1, fg_rgba.width), int(th_h * 0.78) / max(1, fg_rgba.height))
-                        nw, nh = max(1, int(fg_rgba.width * scale)), max(1, int(fg_rgba.height * scale))
-                        resized_fg = fg_rgba.resize((nw, nh), Image.Resampling.LANCZOS)
-                        canvas.paste(resized_fg, ((th_w - nw) // 2, (th_h - nh) // 2), resized_fg)
-                        pdata["edited_img_b64"] = pil_to_base64_url(canvas, max_w=th_w, fmt="JPEG")
-                        pdata.setdefault("photo_ai_report", {})["engine_used"] = "⚡ 외부 고화질 투명 PNG 직통 패스 (100% 무손실 유지)"
+            has_new_upload = False
+            cur_imgs = pdata.setdefault("multi_images", [])
 
-                    pdata.setdefault("multi_images", []).append({
-                        "name": uf.name,
-                        "angle_label": default_caps[c_idx],
-                        "b64": durl,
-                        "polished_b64": durl,
-                        "is_cutout": is_cutout
-                    })
-            if not pdata.get("orig_img_b64") and pdata.get("multi_images"):
-                pdata["orig_img_b64"] = pdata["multi_images"][0]["b64"]
-            save_project(pid, pdata)
-            st.rerun()
+            for uf in multi_up:
+                raw_b = uf.getvalue()
+                if not raw_b:
+                    continue
+                # 이미 정상 누끼까지 추출 완료된 파일인지 확인
+                existing_match = next((m for m in cur_imgs if m.get("name") == uf.name), None)
+                if existing_match and existing_match.get("is_cutout") and existing_match.get("cutout_b64"):
+                    continue
+
+                has_new_upload = True
+                _, durl = file_to_media_data_url(uf, auto_polish=True)
+                if not durl:
+                    continue
+
+                up_pil = base64_url_to_pil(durl)
+                c_idx = len(cur_imgs) % len(default_caps)
+
+                # 초고속 AI 정밀 누끼 추출 (u2netp)
+                with st.spinner(f"⚡ '{uf.name}' 사진 AI 누끼 추출 중..."):
+                    cut_pil = quick_auto_cutout_pil(up_pil)
+
+                cutout_durl = pil_to_base64_url(cut_pil, fmt="PNG") if cut_pil else durl
+
+                # 첫 번째 이미지이거나 대표 이미지가 없을 때, 또는 대표 이미지 누끼가 없을 때 대표로 즉시 설정
+                if not pdata.get("fg_cutout_b64") or len(cur_imgs) == 0:
+                    pdata["fg_cutout_b64"] = cutout_durl
+                    pdata["orig_img_b64"] = durl
+
+                    th_spec = get_platform_spec(pdata.get("target_platform"))
+                    th_w, th_h = th_spec["thumb_size"]
+                    canvas = Image.new("RGB", (th_w, th_h), (255, 255, 255))
+                    fg_rgba = cut_pil.convert("RGBA") if cut_pil else up_pil.convert("RGBA")
+                    scale = min(int(th_w * 0.78) / max(1, fg_rgba.width), int(th_h * 0.78) / max(1, fg_rgba.height))
+                    nw, nh = max(1, int(fg_rgba.width * scale)), max(1, int(fg_rgba.height * scale))
+                    resized_fg = fg_rgba.resize((nw, nh), Image.Resampling.LANCZOS)
+                    canvas.paste(resized_fg, ((th_w - nw) // 2, (th_h - nh) // 2), resized_fg)
+                    pdata["edited_img_b64"] = pil_to_base64_url(canvas, max_w=th_w, fmt="JPEG")
+                    pdata.setdefault("photo_ai_report", {})["engine_used"] = "⚡ AI 초고속 누끼 (자동 추출 완료)"
+
+                img_entry = {
+                    "name": uf.name,
+                    "angle_label": default_caps[c_idx],
+                    "b64": durl,
+                    "polished_b64": cutout_durl,
+                    "cutout_b64": cutout_durl,
+                    "is_cutout": True,
+                    "use_in_page": True
+                }
+
+                if existing_match:
+                    existing_match.update(img_entry)
+                else:
+                    cur_imgs.append(img_entry)
+
+            if has_new_upload:
+                if not pdata.get("orig_img_b64") and cur_imgs:
+                    pdata["orig_img_b64"] = cur_imgs[0]["b64"]
+                pdata["draft_html"] = _render_page(pdata)
+                save_project(pid, pdata)
+                st.session_state.proj_data = pdata
+                st.success("🎉 사진 등록 및 AI 정밀 누끼 추출이 완료되어 AI스튜디오 및 상세페이지에 즉시 적용되었습니다!")
+                st.rerun()
 
         # 투명 PNG 감지 배지 실시간 노출
         has_cutout_now = (
@@ -687,10 +796,109 @@ if st.session_state.active_step == 1:
 
         cur_multi = pdata.get("multi_images", [])
         if cur_multi:
+            # 삭제 확인 모달 다이얼로그
+            @st.dialog("⚠️ 사진 삭제 확인")
+            def confirm_delete_dialog(delete_mode="all", target_indices=None):
+                if delete_mode == "all":
+                    st.warning("⚠️ **정말로 등록된 모든 사진을 삭제하시겠습니까?**")
+                    st.markdown("<p style='font-size:0.9em; color:#cbd5e1;'>등록된 모든 사진이 완전히 삭제되며, 대표 누끼컷 및 썸네일도 초기화됩니다. 이 작업은 되돌릴 수 없습니다.</p>", unsafe_allow_html=True)
+                else:
+                    st.warning(f"⚠️ **선택하신 {len(target_indices)}장의 사진을 삭제하시겠습니까?**")
+                    st.markdown("<p style='font-size:0.9em; color:#cbd5e1;'>선택된 사진들이 프로젝트에서 삭제됩니다.</p>", unsafe_allow_html=True)
+
+                c_d1, c_d2 = st.columns(2)
+                with c_d1:
+                    if st.button("💥 네, 삭제합니다", type="primary", use_container_width=True, key=f"btn_modal_confirm_{pid}"):
+                        if delete_mode == "all":
+                            pdata["multi_images"] = []
+                            pdata["orig_img_b64"] = ""
+                            pdata["fg_cutout_b64"] = ""
+                            pdata["edited_img_b64"] = ""
+                        else:
+                            pdata["multi_images"] = [m for idx, m in enumerate(pdata.get("multi_images", [])) if idx not in target_indices]
+                            if pdata.get("multi_images"):
+                                pdata["orig_img_b64"] = pdata["multi_images"][0].get("b64", "")
+                                pdata["fg_cutout_b64"] = pdata["multi_images"][0].get("cutout_b64", "")
+                                pdata["edited_img_b64"] = pdata["multi_images"][0].get("polished_b64", "")
+                            else:
+                                pdata["orig_img_b64"] = ""
+                                pdata["fg_cutout_b64"] = ""
+                                pdata["edited_img_b64"] = ""
+                        pdata["draft_html"] = _render_page(pdata)
+                        save_project(pid, pdata)
+                        st.session_state.proj_data = pdata
+                        st.success("삭제가 완료되었습니다.")
+                        st.rerun()
+                with c_d2:
+                    if st.button("취소", use_container_width=True, key=f"btn_modal_cancel_{pid}"):
+                        st.rerun()
+
             st.caption(f"등록된 사진: 총 {len(cur_multi)}장")
+
+            # 1. 일괄 관리 툴바 (전체선택, 선택삭제, 전체삭제)
+            sel_all_key = f"sel_all_{pid}"
+            if sel_all_key not in st.session_state:
+                st.session_state[sel_all_key] = False
+
+            def _on_sel_all_change():
+                target_state = st.session_state[sel_all_key]
+                for idx_k in range(len(cur_multi)):
+                    st.session_state[f"chk_sel_{pid}_{idx_k}"] = target_state
+
+            c_tb1, c_tb2, c_tb3 = st.columns([3.5, 3.5, 3])
+            with c_tb1:
+                st.checkbox("☑️ 전체 선택", key=sel_all_key, on_change=_on_sel_all_change)
+            with c_tb2:
+                btn_del_sel = st.button("🗑️ 선택 삭제", use_container_width=True, key=f"btn_del_sel_{pid}", help="선택한 사진들을 삭제합니다.")
+            with c_tb3:
+                btn_del_all = st.button("💥 사진 전체 삭제", type="secondary", use_container_width=True, key=f"btn_del_all_{pid}", help="등록된 모든 사진을 초기화합니다.")
+
+            if btn_del_all:
+                confirm_delete_dialog("all")
+
+            if st.button("✨ 등록된 대표 사진으로 AI 정밀 누끼 따기 (바닥 그림자 칼제거 & 본체 보호)", type="primary", use_container_width=True, key=f"btn_quick_cutout_all_{pid}"):
+                with st.spinner("⚡ AI 정밀 누끼 추출 및 바닥 그림자 완벽 제거 중..."):
+                    # 대표 사진 기준으로 누끼 추출
+                    main_m = cur_multi[0]
+                    orig_durl = pdata.get("orig_img_b64") or main_m.get("b64")
+                    up_pil = base64_url_to_pil(orig_durl)
+                    cut_pil = quick_auto_cutout_pil(up_pil, clean_shadow=True)
+                    cutout_durl = pil_to_base64_url(cut_pil, fmt="PNG") if cut_pil else orig_durl
+
+                    pdata["fg_cutout_b64"] = cutout_durl
+                    pdata["orig_img_b64"] = orig_durl
+
+                    th_spec = get_platform_spec(pdata.get("target_platform"))
+                    th_w, th_h = th_spec["thumb_size"]
+                    canvas = Image.new("RGB", (th_w, th_h), (255, 255, 255))
+                    fg_rgba = cut_pil.convert("RGBA") if cut_pil else up_pil.convert("RGBA")
+                    scale = min(int(th_w * 0.78) / max(1, fg_rgba.width), int(th_h * 0.78) / max(1, fg_rgba.height))
+                    nw, nh = max(1, int(fg_rgba.width * scale)), max(1, int(fg_rgba.height * scale))
+                    resized_fg = fg_rgba.resize((nw, nh), Image.Resampling.LANCZOS)
+                    canvas.paste(resized_fg, ((th_w - nw) // 2, (th_h - nh) // 2), resized_fg)
+                    pdata["edited_img_b64"] = pil_to_base64_url(canvas, max_w=th_w, fmt="JPEG")
+
+                    main_m["polished_b64"] = cutout_durl
+                    main_m["cutout_b64"] = cutout_durl
+                    main_m["is_cutout"] = True
+
+                    pdata["draft_html"] = _render_page(pdata)
+                    save_project(pid, pdata)
+                    st.session_state.proj_data = pdata
+                    st.success("✅ AI 정밀 누끼 추출 및 상세페이지 반영이 완료되었습니다!")
+                    st.rerun()
+
+            selected_indices = []
             cols_g = st.columns(min(3, len(cur_multi)))
             for idx_m, m_item in enumerate(cur_multi):
+                chk_key_m = f"chk_sel_{pid}_{idx_m}"
+                if chk_key_m not in st.session_state:
+                    st.session_state[chk_key_m] = st.session_state[sel_all_key]
+
                 with cols_g[idx_m % len(cols_g)]:
+                    chk_this = st.checkbox(f"선택 #{idx_m+1}", key=chk_key_m)
+                    if chk_this:
+                        selected_indices.append(idx_m)
                     mpil = base64_url_to_pil(m_item.get("polished_b64") or m_item.get("b64"))
                     if mpil is not None:
                         st.image(mpil, use_container_width=True)
@@ -707,18 +915,39 @@ if st.session_state.active_step == 1:
                         save_project(pid, pdata)
                         st.rerun()
 
-                    b1, b2 = st.columns(2)
-                    if b1.button("⭐ 대표컷", key=f"set_main_{idx_m}", use_container_width=True):
+                    b1, b2, b3 = st.columns([1, 1, 1])
+                    if b1.button("⭐ 대표", key=f"set_main_{idx_m}", use_container_width=True, help="이 사진을 대표 컷으로 설정"):
                         pdata["orig_img_b64"] = m_item["b64"]
+                        if m_item.get("cutout_b64"):
+                            pdata["fg_cutout_b64"] = m_item["cutout_b64"]
                         pdata["draft_html"] = _render_page(pdata)
                         save_project(pid, pdata)
+                        st.session_state.proj_data = pdata
                         st.rerun()
-                    if len(cur_multi) > 1 and b2.button("🗑️", key=f"del_m_{idx_m}", use_container_width=True):
-                        cur_multi.pop(idx_m)
-                        pdata["multi_images"] = cur_multi
-                        pdata["draft_html"] = _render_page(pdata)
-                        save_project(pid, pdata)
-                        st.rerun()
+
+                    if b2.button("✂️ 누끼", key=f"recut_single_{idx_m}", use_container_width=True, help="이 사진의 AI 누끼를 즉시 추출"):
+                        with st.spinner("AI 누끼 추출 중..."):
+                            up_p = base64_url_to_pil(m_item.get("b64"))
+                            cp = quick_auto_cutout_pil(up_p)
+                            cdurl = pil_to_base64_url(cp, fmt="PNG") if cp else m_item.get("b64")
+                            m_item["cutout_b64"] = cdurl
+                            m_item["polished_b64"] = cdurl
+                            m_item["is_cutout"] = True
+                            pdata["fg_cutout_b64"] = cdurl
+                            pdata["draft_html"] = _render_page(pdata)
+                            save_project(pid, pdata)
+                            st.session_state.proj_data = pdata
+                            st.success("✅ 누끼 추출 완료!")
+                            st.rerun()
+
+                    if b3.button("🗑️", key=f"del_m_{idx_m}", use_container_width=True, help="이 사진 삭제"):
+                        confirm_delete_dialog("selected", [idx_m])
+
+            if btn_del_sel:
+                if selected_indices:
+                    confirm_delete_dialog("selected", selected_indices)
+                else:
+                    st.warning("⚠️ 삭제할 사진을 먼저 체크해 주세요.")
 
         if pdata.get("fg_cutout_b64") or pdata.get("edited_img_b64"):
             st.markdown("##### ✨ 완성된 대표 누끼 컷 (투명 직통 & 썸네일)")
@@ -765,6 +994,13 @@ if st.session_state.active_step == 1:
             save_project(pid, pdata)
             st.session_state.active_step = 2
             st.rerun()
+
+    # 1단계 실시간 상세페이지 미리보기 (필요 시 펼치기 - 성능 최적화)
+    st.markdown("---")
+    with st.expander("👁️ 사진 & 제품명이 반영된 상세페이지 미리보기 (클릭하여 확인)", expanded=False):
+        st.caption("💡 제품명을 입력하거나 사진을 업로드하면 아래 상세페이지에 실시간으로 즉시 반영됩니다.")
+        detail_html = pdata.get("draft_html") or _render_page(pdata)
+        components.html(detail_html, height=750, scrolling=True)
 
 
 # ---------------------------------------------------------------------
